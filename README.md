@@ -130,3 +130,125 @@ void KalmanFilter::Predict() {
   P_ = F_ * P_ * Ft + Q_;
 }
 ```
+* Kalman filter update function for lidar measurements:
+```c++
+void KalmanFilter::UpdateEKF(const VectorXd &z) {
+  /**
+  TODO:
+    * update the state by using Extended Kalman Filter equations
+  */
+  #define PI 3.14159265;
+  
+  VectorXd z_pred;
+  z_pred = VectorXd(3);
+  z_pred(0) = sqrt (x_(0)*x_(0) + x_(1)*x_(1));
+  z_pred(1) = atan2 (x_(1), x_(0));
+  z_pred(2) = (x_(0) * x_(2) + x_(1) * x_(3)) / sqrt (x_(0)*x_(0) + x_(1)*x_(1));
+  VectorXd y = z - z_pred;
+  
+  //Adjust phi in y to stay inside -PI and PI
+  while ((y(1) > 3.14159265) || (y(1) < -3.14159265))
+  {
+    if(y(1) > 3.14159265)
+    {
+      y(1) = y(1) - 2 * PI;
+    }
+    else
+    {
+      y(1) = y(1) + 2 * PI;
+    }
+  }
+
+  MatrixXd Ht = H_.transpose();
+  MatrixXd S = H_ * P_ * Ht + R_;
+  MatrixXd Si = S.inverse();
+  MatrixXd PHt = P_ * Ht;
+  MatrixXd K = PHt * Si;
+
+  //new estimate
+  x_ = x_ + (K * y);
+  long x_size = x_.size();
+  MatrixXd I = MatrixXd::Identity(x_size, x_size);
+  P_ = (I - K * H_) * P_;  
+  
+}
+```
+In above extended kalman filter code, z_pred is calculated using z'=h(x'), and when calculating phi in z', angle is normalized to -pi and pi.
+### tools.cpp
+The main code changes I have for tools.cpp are:
+* Update the code for calculating Jacobian matrix for Extened Kalman Filter updating function based on codes from class exercise:
+```c++
+MatrixXd Tools::CalculateJacobian(const VectorXd& x_state) {
+  /**
+  TODO:
+    * Calculate a Jacobian here.
+  */
+  MatrixXd Hj(3,4);
+  //recover state parameters
+  float px = x_state(0);
+  float py = x_state(1);
+  float vx = x_state(2);
+  float vy = x_state(3);
+
+  //pre-compute a set of terms to avoid repeated calculation
+  float c1 = px*px+py*py;
+  float c2 = sqrt(c1);
+  float c3 = (c1*c2);
+
+  //check division by zero
+  if(fabs(c1) < 0.0001){
+	cout << "CalculateJacobian () - Error - Division by Zero" << endl;
+    Hj << 0, 0, 0, 0,
+          0, 0, 0, 0,
+          0, 0, 0, 0;          
+	return Hj;
+  }
+
+  //compute the Jacobian matrix
+  Hj << (px/c2), (py/c2), 0, 0,
+		-(py/c1), (px/c1), 0, 0,
+		py*(vx*py - vy*px)/c3, px*(px*vy - py*vx)/c3, px/c2, py/c2;
+
+  return Hj;  
+}
+```
+* Update the code for calculating RMSE based on codes from class exercise:
+```c++
+VectorXd Tools::CalculateRMSE(const vector<VectorXd> &estimations,
+                              const vector<VectorXd> &ground_truth) {
+  /**
+  TODO:
+    * Calculate the RMSE here.
+  */
+  VectorXd rmse(4);
+  rmse << 0,0,0,0;
+
+  // check the validity of the following inputs:
+  //  * the estimation vector size should not be zero
+  //  * the estimation vector size should equal ground truth vector size
+  if(estimations.size() != ground_truth.size()
+	      || estimations.size() == 0){
+	cout << "Invalid estimation or ground_truth data" << endl;
+	return rmse;
+  }
+
+  //accumulate squared residuals
+  for(unsigned int i=0; i < estimations.size(); ++i){
+
+	VectorXd residual = estimations[i] - ground_truth[i];
+
+	//coefficient-wise multiplication
+	residual = residual.array()*residual.array();
+	rmse += residual;
+  }
+
+  //calculate the mean
+  rmse = rmse/estimations.size();
+
+  //calculate the squared root
+  rmse = rmse.array().sqrt();
+
+  //return the result
+  return rmse;
+}
+```
