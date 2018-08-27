@@ -116,3 +116,17 @@ The main code changes I have for FusionEKF.cpp are:
     ekf_.Update(measurement_pack.raw_measurements_);
   }
 ```
+### kalman_filter.cpp
+The main code changes I have for kalman_filter.cpp are:
+* Update prediction function with codes proivded from class:
+```c++
+void KalmanFilter::Predict() {
+  /**
+  TODO:
+    * predict the state
+  */
+  x_ = F_ * x_;
+  MatrixXd Ft = F_.transpose();
+  P_ = F_ * P_ * Ft + Q_;
+}
+```
