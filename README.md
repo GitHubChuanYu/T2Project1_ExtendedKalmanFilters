@@ -1,7 +1,7 @@
-# Extended Kalman Filter Project Starter Code
+# Chuan's Extended Kalman Filter Project
 Self-Driving Car Engineer Nanodegree Program
 
-In this project you will utilize a kalman filter to estimate the state of a moving object of interest with noisy lidar and radar measurements. Passing the project requires obtaining RMSE values that are lower than the tolerance outlined in the project rubric. 
+In this project I will utilize a kalman filter to estimate the state of a moving object of interest with noisy lidar and radar measurements. Passing the project requires obtaining RMSE values that are lower than the tolerance outlined in the project rubric. 
 
 This project involves the Term 2 Simulator which can be downloaded [here](https://github.com/udacity/self-driving-car-sim/releases)
 
@@ -14,29 +14,6 @@ Once the install for uWebSocketIO is complete, the main program can be built and
 3. cmake ..
 4. make
 5. ./ExtendedKF
-
-Tips for setting up your environment can be found [here](https://classroom.udacity.com/nanodegrees/nd013/parts/40f38239-66b6-46ec-ae68-03afd8a601c8/modules/0949fca6-b379-42af-a919-ee50aa304e6a/lessons/f758c44c-5e40-4e01-93b5-1a82aa4e044f/concepts/23d376c7-0195-4276-bdf0-e02f1f3c665d)
-
-Note that the programs that need to be written to accomplish the project are src/FusionEKF.cpp, src/FusionEKF.h, kalman_filter.cpp, kalman_filter.h, tools.cpp, and tools.h
-
-The program main.cpp has already been filled out, but feel free to modify it.
-
-Here is the main protcol that main.cpp uses for uWebSocketIO in communicating with the simulator.
-
-
-INPUT: values provided by the simulator to the c++ program
-
-["sensor_measurement"] => the measurement that the simulator observed (either lidar or radar)
-
-
-OUTPUT: values provided by the c++ program to the simulator
-
-["estimate_x"] <= kalman filter estimated position x
-["estimate_y"] <= kalman filter estimated position y
-["rmse_x"]
-["rmse_y"]
-["rmse_vx"]
-["rmse_vy"]
 
 ---
 
@@ -61,69 +38,217 @@ OUTPUT: values provided by the c++ program to the simulator
    * On windows, you may need to run: `cmake .. -G "Unix Makefiles" && make`
 4. Run it: `./ExtendedKF `
 
-## Editor Settings
+## Own project work based on original project repository
+### FusionEKF.cpp
+The main code changes I have for FusionEKF.cpp are:
+* Initialize state vectors with first measuremens from Lidar or Radar sensor:
+```c++
+    if (measurement_pack.sensor_type_ == MeasurementPackage::RADAR) {
+      /**
+      Convert radar from polar to cartesian coordinates and initialize state.
+      */
+      ekf_.x_(0) = measurement_pack.raw_measurements_[0] * cos (measurement_pack.raw_measurements_[1]);
+      ekf_.x_(1) = measurement_pack.raw_measurements_[0] * sin (measurement_pack.raw_measurements_[1]);
+      ekf_.x_(2) = 0;
+      ekf_.x_(3) = 0;
+    }
+    else if (measurement_pack.sensor_type_ == MeasurementPackage::LASER) {
+      /**
+      Initialize state.
+      */
+      ekf_.x_ << measurement_pack.raw_measurements_[0], measurement_pack.raw_measurements_[1], 0, 0;
+    }
 
-We've purposefully kept editor configuration files out of this repo in order to
-keep it as simple and environment agnostic as possible. However, we recommend
-using the following settings:
+    // done initializing, no need to predict or update
+    previous_timestamp_ = measurement_pack.timestamp_;
+    is_initialized_ = true;
+```
+* Calculate state transition matrix F and process noise covariance matrix Q for prediction step based on dt:
+```C++
+  //compute the time elapsed between the current and previous measurements
+  float dt = (measurement_pack.timestamp_ - previous_timestamp_) / 1000000.0;	//dt - expressed in seconds
+  previous_timestamp_ = measurement_pack.timestamp_;
+  
+  float dt_2 = dt * dt;
+  float dt_3 = dt_2 * dt;
+  float dt_4 = dt_3 * dt;  
 
-* indent using spaces
-* set tab width to 2 spaces (keeps the matrices in source code aligned)
+  //Modify the F matrix so that the time is integrated
+  ekf_.F_(0, 2) = dt;
+  ekf_.F_(1, 3) = dt;
 
-## Code Style
+  //set acceleration noise components
+  float noise_ax = 9;
+  float noise_ay = 9;
 
-Please (do your best to) stick to [Google's C++ style guide](https://google.github.io/styleguide/cppguide.html).
+  //set the process covariance matrix Q
+  ekf_.Q_ = MatrixXd(4, 4);
+  ekf_.Q_ <<  dt_4/4*noise_ax, 0, dt_3/2*noise_ax, 0,
+			  0, dt_4/4*noise_ay, 0, dt_3/2*noise_ay,
+			  dt_3/2*noise_ax, 0, dt_2*noise_ax, 0,
+			  0, dt_3/2*noise_ay, 0, dt_2*noise_ay;
+```
+* Update measure matrix H and measurement covariance matrix R for kalman filter updating step, for Radar sensor measurements H should be linearized jacobian matrix Hj, and measurement covariance matrix R is differentiated for Radar and Lidar updating steps. For Lidar measurement update, it is calling Update function in kalman_filter.cpp, for radar measurement update, it is calling UpdateEKF function:
+```c++
+  if (measurement_pack.sensor_type_ == MeasurementPackage::RADAR) {
+    // Radar updates
+    
+    // Update measurement (Jacobian) matrix for Radar updates
+    Hj_ = tools.CalculateJacobian(ekf_.x_);
+    ekf_.H_ = Hj_;
+    
+    // Update measurement covariance matrix - radar
+    ekf_.R_ = R_radar_;
+    
+    // Call Radar update function
+    ekf_.UpdateEKF(measurement_pack.raw_measurements_);
+    
+  } else {
+    // Laser updates
+    
+    // Update meaurement matrix for Radar updates
+    ekf_.H_ = H_laser_;
+    
+    // Update measurement covariance matrix - lidar
+    ekf_.R_ = R_laser_;
 
-## Generating Additional Data
+    // Call Lidar update function
+    ekf_.Update(measurement_pack.raw_measurements_);
+  }
+```
+### kalman_filter.cpp
+The main code changes I have for kalman_filter.cpp are:
+* Update prediction function with codes proivded from class:
+```c++
+void KalmanFilter::Predict() {
+  /**
+  TODO:
+    * predict the state
+  */
+  x_ = F_ * x_;
+  MatrixXd Ft = F_.transpose();
+  P_ = F_ * P_ * Ft + Q_;
+}
+```
+* Kalman filter update function for lidar measurements:
+```c++
+void KalmanFilter::UpdateEKF(const VectorXd &z) {
+  /**
+  TODO:
+    * update the state by using Extended Kalman Filter equations
+  */
+  #define PI 3.14159265;
+  
+  VectorXd z_pred;
+  z_pred = VectorXd(3);
+  z_pred(0) = sqrt (x_(0)*x_(0) + x_(1)*x_(1));
+  z_pred(1) = atan2 (x_(1), x_(0));
+  z_pred(2) = (x_(0) * x_(2) + x_(1) * x_(3)) / sqrt (x_(0)*x_(0) + x_(1)*x_(1));
+  VectorXd y = z - z_pred;
+  
+  //Adjust phi in y to stay inside -PI and PI
+  while ((y(1) > 3.14159265) || (y(1) < -3.14159265))
+  {
+    if(y(1) > 3.14159265)
+    {
+      y(1) = y(1) - 2 * PI;
+    }
+    else
+    {
+      y(1) = y(1) + 2 * PI;
+    }
+  }
 
-This is optional!
+  MatrixXd Ht = H_.transpose();
+  MatrixXd S = H_ * P_ * Ht + R_;
+  MatrixXd Si = S.inverse();
+  MatrixXd PHt = P_ * Ht;
+  MatrixXd K = PHt * Si;
 
-If you'd like to generate your own radar and lidar data, see the
-[utilities repo](https://github.com/udacity/CarND-Mercedes-SF-Utilities) for
-Matlab scripts that can generate additional data.
+  //new estimate
+  x_ = x_ + (K * y);
+  long x_size = x_.size();
+  MatrixXd I = MatrixXd::Identity(x_size, x_size);
+  P_ = (I - K * H_) * P_;  
+  
+}
+```
+In above extended kalman filter code, z_pred is calculated using z'=h(x'), and when calculating phi in z', angle is normalized to -pi and pi.
+### tools.cpp
+The main code changes I have for tools.cpp are:
+* Update the code for calculating Jacobian matrix for Extened Kalman Filter updating function based on codes from class exercise:
+```c++
+MatrixXd Tools::CalculateJacobian(const VectorXd& x_state) {
+  /**
+  TODO:
+    * Calculate a Jacobian here.
+  */
+  MatrixXd Hj(3,4);
+  //recover state parameters
+  float px = x_state(0);
+  float py = x_state(1);
+  float vx = x_state(2);
+  float vy = x_state(3);
 
-## Project Instructions and Rubric
+  //pre-compute a set of terms to avoid repeated calculation
+  float c1 = px*px+py*py;
+  float c2 = sqrt(c1);
+  float c3 = (c1*c2);
 
-Note: regardless of the changes you make, your project must be buildable using
-cmake and make!
+  //check division by zero
+  if(fabs(c1) < 0.0001){
+	cout << "CalculateJacobian () - Error - Division by Zero" << endl;
+    Hj << 0, 0, 0, 0,
+          0, 0, 0, 0,
+          0, 0, 0, 0;          
+	return Hj;
+  }
 
-More information is only accessible by people who are already enrolled in Term 2
-of CarND. If you are enrolled, see [the project resources page](https://classroom.udacity.com/nanodegrees/nd013/parts/40f38239-66b6-46ec-ae68-03afd8a601c8/modules/0949fca6-b379-42af-a919-ee50aa304e6a/lessons/f758c44c-5e40-4e01-93b5-1a82aa4e044f/concepts/382ebfd6-1d55-4487-84a5-b6a5a4ba1e47)
-for instructions and the project rubric.
+  //compute the Jacobian matrix
+  Hj << (px/c2), (py/c2), 0, 0,
+		-(py/c1), (px/c1), 0, 0,
+		py*(vx*py - vy*px)/c3, px*(px*vy - py*vx)/c3, px/c2, py/c2;
 
-## Hints and Tips!
+  return Hj;  
+}
+```
+* Update the code for calculating RMSE based on codes from class exercise:
+```c++
+VectorXd Tools::CalculateRMSE(const vector<VectorXd> &estimations,
+                              const vector<VectorXd> &ground_truth) {
+  /**
+  TODO:
+    * Calculate the RMSE here.
+  */
+  VectorXd rmse(4);
+  rmse << 0,0,0,0;
 
-* You don't have to follow this directory structure, but if you do, your work
-  will span all of the .cpp files here. Keep an eye out for TODOs.
-* Students have reported rapid expansion of log files when using the term 2 simulator.  This appears to be associated with not being connected to uWebSockets.  If this does occur,  please make sure you are conneted to uWebSockets. The following workaround may also be effective at preventing large log files.
+  // check the validity of the following inputs:
+  //  * the estimation vector size should not be zero
+  //  * the estimation vector size should equal ground truth vector size
+  if(estimations.size() != ground_truth.size()
+	      || estimations.size() == 0){
+	cout << "Invalid estimation or ground_truth data" << endl;
+	return rmse;
+  }
 
-    + create an empty log file
-    + remove write permissions so that the simulator can't write to log
- * Please note that the ```Eigen``` library does not initialize ```VectorXd``` or ```MatrixXd``` objects with zeros upon creation.
+  //accumulate squared residuals
+  for(unsigned int i=0; i < estimations.size(); ++i){
 
-## Call for IDE Profiles Pull Requests
+	VectorXd residual = estimations[i] - ground_truth[i];
 
-Help your fellow students!
+	//coefficient-wise multiplication
+	residual = residual.array()*residual.array();
+	rmse += residual;
+  }
 
-We decided to create Makefiles with cmake to keep this project as platform
-agnostic as possible. Similarly, we omitted IDE profiles in order to ensure
-that students don't feel pressured to use one IDE or another.
+  //calculate the mean
+  rmse = rmse/estimations.size();
 
-However! We'd love to help people get up and running with their IDEs of choice.
-If you've created a profile for an IDE that you think other students would
-appreciate, we'd love to have you add the requisite profile files and
-instructions to ide_profiles/. For example if you wanted to add a VS Code
-profile, you'd add:
+  //calculate the squared root
+  rmse = rmse.array().sqrt();
 
-* /ide_profiles/vscode/.vscode
-* /ide_profiles/vscode/README.md
-
-The README should explain what the profile does, how to take advantage of it,
-and how to install it.
-
-Regardless of the IDE used, every submitted project must
-still be compilable with cmake and make.
-
-## How to write a README
-A well written README file can enhance your project and portfolio.  Develop your abilities to create professional README files by completing [this free course](https://www.udacity.com/course/writing-readmes--ud777).
-
+  //return the result
+  return rmse;
+}
+```
