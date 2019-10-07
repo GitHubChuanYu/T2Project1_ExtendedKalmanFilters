@@ -11,15 +11,15 @@ KalmanFilter::KalmanFilter() {}
 
 KalmanFilter::~KalmanFilter() {}
 
-void KalmanFilter::Init(VectorXd &x_in, MatrixXd &P_in, MatrixXd &F_in,
-                        MatrixXd &H_in, MatrixXd &R_in, MatrixXd &Q_in) {
-  x_ = x_in;
-  P_ = P_in;
-  F_ = F_in;
-  H_ = H_in;
-  R_ = R_in;
-  Q_ = Q_in;
-}
+// void kalmanfilter::init(vectorxd &x_in, matrixxd &p_in, matrixxd &f_in,
+                        // matrixxd &h_in, matrixxd &r_in, matrixxd &q_in) {
+  // x_ = x_in;
+  // p_ = p_in;
+  // f_ = f_in;
+  // h_ = h_in;
+  // r_ = r_in;
+  // q_ = q_in;
+// }
 
 void KalmanFilter::Predict() {
   /**

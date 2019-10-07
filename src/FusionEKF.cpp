@@ -23,6 +23,8 @@ FusionEKF::FusionEKF() {
   H_laser_ = MatrixXd(2, 4);
   H_laser_ << 1, 0, 0, 0,
               0, 1, 0, 0;
+  
+  //For radar measurement, measurement matrix is Jacobian matrix
   Hj_ = MatrixXd(3, 4);
 
   //measurement covariance matrix - laser
@@ -164,7 +166,7 @@ void FusionEKF::ProcessMeasurement(const MeasurementPackage &measurement_pack) {
     // Update measurement covariance matrix - radar
     ekf_.R_ = R_radar_;
     
-    // Call Radar update function
+    // Call Radar update function (Extended Kalman Filter)
     ekf_.UpdateEKF(measurement_pack.raw_measurements_);
     
   } else {

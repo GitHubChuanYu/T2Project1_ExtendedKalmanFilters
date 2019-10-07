@@ -80,5 +80,3 @@ MatrixXd Tools::CalculateJacobian(const VectorXd& x_state) {
 
   return Hj;  
 }
-
-//Test connection between Window editor and Linux
